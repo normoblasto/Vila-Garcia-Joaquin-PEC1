@@ -1,0 +1,92 @@
+---
+title: "PEC 1. Análisis de datos ómicos"
+author: "Joaquín Vila"
+date: "2024-10-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Lo primero que haremos será instalar y cargar el paquete *SummarizedExperiment*:
+
+```{r}
+# Instalación del paquete SummarizedExperiment
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("SummarizedExperiment")
+
+# Carga del paquete SummarizedExperiment
+library(SummarizedExperiment)
+
+# Instalación del paquete metabolomicsWorkbenchR
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("metabolomicsWorkbenchR")
+
+# Carga del paquete metabolomicsWorkbenchR
+library(metabolomicsWorkbenchR)
+```
+
+Posteriormente cargamos el dataset elegido (2024-fobitools-UseCase_1)
+
+```{r}
+# main features data (1541 metabolites across 45 samples)
+features_data <- read.csv2("~/Máster bioestadística UOC/Análisis de datos ómicos/PEC 1/metaboData/Datasets/2024-fobitools-UseCase_1/features.csv", header = TRUE, row.names = 1)
+
+# metadata for samples (sample name and group name)
+sample_metadata <- read.csv2("~/Máster bioestadística UOC/Análisis de datos ómicos/PEC 1/metaboData/Datasets/2024-fobitools-UseCase_1/metadata.csv", header = TRUE, row.names = 1)
+
+# metabolite names and IDs (PubChem and KEGG IDs)
+metabolite_names <- read.csv2("~/Máster bioestadística UOC/Análisis de datos ómicos/PEC 1/metaboData/Datasets/2024-fobitools-UseCase_1/metaboliteNames.csv", header = TRUE, row.names = 1)
+
+```
+
+```{r}
+# Convert features data to matrix format
+assay_data <- as.matrix(features_data)
+
+# Prepare row metadata: Metabolite identifiers
+row_data <- DataFrame(metabolite_names[, 1])
+
+# Prepare column metadata: Sample information
+col_data <- DataFrame(sample_metadata[,1])
+
+```
+
+```{r}
+# Create the SummarizedExperiment object
+se <- SummarizedExperiment(assays = list(counts = assay_data),
+                           rowData = row_data,
+                           colData = col_data)
+```
+
+Guardamos el archivo "SummarizedExperimentData.Rda":
+
+```{r}
+save(se, file = "SummarizedExperimentData.Rda")
+
+```
+
+Breve exploración de nuestro dataset:
+
+```{r}
+se
+
+
+```
+
+Vemos que la clase de objeto es SummarizedExperiment y que está formado por 1541 filas y 45 columnas.
+
+Nombres de las columnas:
+
+```{r}
+head(colnames(se))
+```
+
+Nombres de las filas:
+
+```{r}
+head(rownames(se))
+```
