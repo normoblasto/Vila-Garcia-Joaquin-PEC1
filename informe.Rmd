@@ -1,0 +1,285 @@
+---
+title: "PEC 1. Análisis de datos ómicos"
+author: "Joaquín Vila García"
+date: "2024-11-04"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## PEC 1
+
+El enlace al repositorio de GitHub en el que se almacenan los archivos de esta PEC es:
+
+<https://github.com/normoblasto/Vila-Garcia-Joaquin-PEC1>
+
+El dataset de metabolómica elegido para esta PEC es 2024-fobitools-UseCase_1, del repositorio "<https://github.com/nutrimetabolomics/metaboData/>" de GitHUb. Como se puede leer en la descripción, este paquete está sacado de Metabolomics Workbench (ID ST000291). Está basado en un estudio realizado para analizar las diferencias metabolómicas en la orina de mujeres jóvenes después de beber jugo de arándano o jugo de manzana.
+
+Para desarrollar el ejercicio vamos a usar las librerías de R "readr", "metabolomicsWorkbenchR", "SummarizedExperiment".
+
+Lo primero que haremos será cargar dichas librerías o paquetes:
+
+```{r}
+# Carga del paquete readr
+library(readr)
+
+# Carga del paquete dplyr
+library(dplyr)
+
+# Carga del paquete SummarizedExperiment de BiocManager
+library(SummarizedExperiment)
+
+# Carga del paquete metabolomicsWorkbenchR de BiocManager
+library(metabolomicsWorkbenchR)
+```
+
+Posteriormente cargamos el dataset elegido (2024-fobitools-UseCase_1). En mi caso, he decidido usar los datos raw directamente desde mi repositoroi GitHub, para que el archivo de R pueda ejecutarse fácilmente desde cualquier ordenador.
+
+```{r}
+# Cargar los datos de características (1541 variables x 45 muestras)
+features <- read_csv2("https://raw.githubusercontent.com/normoblasto/Vila-Garcia-Joaquin-PEC1/main/2024-fobitools-UseCase_1/features.csv")
+head(features)
+
+# Cargar los metadatos (45 muestras con 2 columnas)
+metadata <- read.csv2("https://raw.githubusercontent.com/normoblasto/Vila-Garcia-Joaquin-PEC1/main/2024-fobitools-UseCase_1/metadata.csv",  header = TRUE, row.names = 1)
+head(metadata)
+
+# Cargar los nombres de metabolitos (1541 variables con 3 columnas)
+metabolite_names <- read.csv2("https://raw.githubusercontent.com/normoblasto/Vila-Garcia-Joaquin-PEC1/main/2024-fobitools-UseCase_1/metaboliteNames.csv",  header = TRUE, row.names = 1)
+head(metabolite_names)
+```
+
+Un objeto de tipo *SummarizedExperiment* es una estructura de datos diseñada para almacenar y organizar datos de experimentos biológicos y genómicos. Permite mantener una relación entre datos de expresión (matrices numéricas) y metadatos (información adicional sobre las muestras y características). Sus principales componentes son:
+
+-   **Assay(s)**: Este componente contiene una o más matrices de datos numéricos.
+
+-   **rowData:** Son los metadatos de las filas, proporcionando información adicional sobre cada característica. En nuestro experimento, la información contenida en la segunda fila de metaboliteNames.csv, que corresponde a los nombres de los metabolitos.
+
+-   **colData:** Son los metadatos de las columnas. En nuestro caso, la columna ID del archivo metadata.csv.
+
+-   **metadata**: contiene metadatos adicionales.
+
+Una vez tenemos claro qué queremos incluir en el objeto SummarizedExperiment, podemos crear las matrices que lo formarán.
+
+```{r}
+#Creamos la matriz principal de datos (features)
+assay <- as.matrix(features)
+
+# Matriz de filas (metabolitos)
+row_data <- data.frame(metabolite_names[,1])
+head(row_data)
+
+# Matriz de columnas
+col_data <- data.frame(metadata[,1])
+head(col_data)
+
+```
+
+Para poder crear el objeto SE, tienen que coincidir los nombres de las columnas (rownames) de metadata y de features. Por ello, renombraremos las filas y columnas para asegurar que los nombres coincidan entre features y metadata.
+
+```{r}
+colnames(features) <- metadata$ID
+rownames(metadata) <- metadata$ID
+```
+
+Si queremos que los nombres de las filas sean los de los metabolitos, podemos definirlo de este modo:
+
+```{r}
+rownames(metabolite_names) <- metabolite_names$names
+```
+
+```{r}
+# Creamos el objeto SummarizedExperiment usando los valores arriba seleccionados
+se <- SummarizedExperiment(assays = list(counts = assay),
+                       
+                           rowData = metabolite_names,
+                           colData = metadata)
+```
+
+Guardamos el archivo "SummarizedExperimentData.Rda":
+
+```{r}
+save(se, file = "SummarizedExperimentData.Rda")
+
+```
+
+Ahora haremos una breve exploración del objeto SummarizedExperiment que hemos creado.
+
+```{r}
+# Cargar el archivo
+load("SummarizedExperimentData.Rda")
+
+# Revisar la estructura general del objeto
+se
+```
+
+Vemos que la clase del archivo es SummarizedExperiment y que tiene una dimensión de 1541x45. Es decir, se han medido 1541 metabolitos en un total de 45 muestras.
+
+Vemos que "metadata(0)", con lo que no hemos almacenado información adicional como metadatos.
+
+Las columnas están etiquetadas con nombres que representan las muestras individuales (b1, b10, etc.). Esto indica que hay 45 muestras únicas en este experimento.
+
+Más en detalle:
+
+```{r}
+# Ver los metadatos de las muestras
+colData(se)
+
+# Resumen de las columnas en `colData`
+summary(colData(se))
+```
+
+```{r}
+# Ver los metadatos de las variables
+rowData(se)
+
+# Primeras filas de `rowData`
+head(rowData(se))
+```
+
+RowData contiene los nombres de los metabolitos analizados.
+
+Comprobaremos si hay valores NA:
+
+```{r}
+sum(is.na(assay(se)))
+```
+
+Vemos que hay 7826 valores NA.
+
+Comprobaremos si hay valores infinitos:
+
+```{r}
+sum(is.infinite(assay(se)))
+```
+
+No hay valores infinitos.
+
+Vamos a calcular media, mediana y DE de los valores de las muestras de los metabolitos. Para ello, hay que eliminar los valores NA.
+
+```{r, warning=FALSE}
+assay(se) <- apply(assay(se), c(1, 2), function(x) if(is.na(as.numeric(x))) NA else as.numeric(x))
+
+metabolite_stats <- data.frame(
+  mean = apply(assay(se), 1, mean, na.rm = TRUE),
+  median = apply(assay(se), 1, median, na.rm = TRUE),
+  sd = apply(assay(se), 1, sd, na.rm = TRUE)
+)
+
+head(metabolite_stats)
+```
+
+Podemos, por ejemplo, analizar qué metabolito es más frecuente en cada grupo de tratamiento:
+
+```{r}
+# Extraer los datos de expresión y los datos de tratamiento
+data_matrix <- assay(se)
+metadata <- colData(se)
+
+# Convertir el data_matrix en un data.frame y añadir el tratamiento como columna
+data_df <- as.data.frame(t(data_matrix))
+data_df$Treatment <- metadata$Treatment
+
+# Calcular el promedio de cada metabolito por grupo de tratamiento
+mean_by_treatment <- data_df %>%
+  group_by(Treatment) %>%
+  summarise(across(everything(), mean, na.rm = TRUE))
+
+# Encontrar el metabolito más frecuente (promedio más alto) en cada grupo
+# Primero, identificamos el valor promedio más alto (Max_Average) para cada grupo
+mean_by_treatment <- mean_by_treatment %>%
+  rowwise() %>%
+  mutate(
+    Max_Average = max(c_across(-Treatment), na.rm = TRUE)
+  )
+
+# Ahora buscamos el nombre del metabolito correspondiente al promedio máximo
+most_frequent_metabolite <- mean_by_treatment %>%
+  rowwise() %>%
+  mutate(
+    Most_Frequent_Metabolite = names(select(., -Treatment))[which.max(c_across(-Treatment) == Max_Average)]
+  ) %>%
+  ungroup() %>%
+  select(Treatment, Most_Frequent_Metabolite, Max_Average)
+
+# Mostrar los resultados
+most_frequent_metabolite
+```
+
+Vemos que el más frecuente es Heterodendrin_1 en los tres grupos.
+
+En formato gráfica de barras:
+
+```{r}
+
+library(ggplot2)
+
+# Crear la gráfica de barras para los metabolitos más frecuentes en cada tratamiento
+ggplot(most_frequent_metabolite, aes(x = Treatment, y = Max_Average, fill = Most_Frequent_Metabolite)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Metabolito más frecuente en cada grupo de tratamiento",
+        x = "Grupo de Tratamiento",
+        y = "Media",
+        fill = "Metabolito"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Podemos también hacer un análisis de los componentes principales. Para ello, podemos usar PCAtools.
+
+```{r}
+#cargamos las librerías
+
+if (!requireNamespace("DESeq2", quietly = TRUE))
+    BiocManager::install("DESeq2")
+
+if (!requireNamespace("PCAtools", quietly = TRUE))
+    BiocManager::install("PCAtools")
+library(DESeq2)
+library(PCAtools)
+```
+
+```{r}
+# Extraer la matriz de conteos del objeto `SummarizedExperiment`
+count_data <- assay(se)
+
+# Identificar filas y columnas sin `NA`
+rows_to_keep <- apply(count_data, 1, function(row) all(!is.na(row)))
+cols_to_keep <- apply(count_data, 2, function(col) all(!is.na(col)))
+```
+
+```{r}
+# Filtrar el `assay`, `rowData` y `colData` en el objeto `SummarizedExperiment`
+se_filtered <- se[rows_to_keep, cols_to_keep]
+
+```
+
+```{r}
+# Comprobar si existen valores `NA` en el `assay` del objeto filtrado
+sum(is.na(assay(se_filtered)))  # Esto debería ser 0
+
+
+```
+
+```{r, error=TRUE}
+# Extraer la matriz de conteos del objeto filtrado
+count_data_filtered <- assay(se_filtered)
+
+# Aplicar transformación logarítmica para estabilizar la varianza
+log_counts <- log2(count_data_filtered + 1)
+
+# Realizar el PCA con la matriz transpuesta para que las muestras sean filas
+pca_result <- prcomp(t(log_counts), scale. = TRUE)
+
+```
+
+Nota: No he sido capaz de completar el análisis de componentes principales porque algún tipo de problema estoy teniendo al depurar los datos para eliminar los valores NA.
+
+En cualquier caso, la conclusión de esta PEC es que los *SummarizedExperiment* son objetos que nos permiten integrar eficientemente datos de expresión con metadatos de muestras y anotaciones de características, facilitando análisis complejos en estudios de alto rendimiento.
